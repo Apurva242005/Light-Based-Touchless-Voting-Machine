@@ -2,109 +2,260 @@
 
 ## Project Overview
 
-The Light-Based Touchless Voting Machine is an FPGA-based digital voting system designed to provide touchless voting using light-based sensing. The system uses two LDR sensors to detect voter interaction and identify invalid or fraudulent sensor activation.
+The **Light-Based Touchless Voting Machine** is a digital voting system designed using FPGA-based digital logic and Verilog HDL.
 
-The complete system is designed using Verilog HDL and can be implemented on an FPGA development board.
+The system uses **two Light Dependent Resistors (LDRs)** as touchless input sensors. A voter can provide an input by interrupting one of the light beams. The dual-LDR arrangement also provides a simple fraud-detection mechanism by identifying simultaneous activation of both sensors.
+
+The system processes the sensor inputs using a voting FSM, detects invalid simultaneous activation, counts valid votes, displays the vote count on a 7-segment display, and provides visual and audible alerts.
+
+A **smart idle power-saving concept** is also included, where the clock-gating logic becomes active only when the system detects an input activity.
+
+---
+
+## Key Features
+
+* Touchless voting using light-based LDR inputs
+* Dual-LDR fraud detection
+* Finite State Machine (FSM) based voting control
+* Automatic valid vote counting
+* 7-segment vote-count display
+* Green LED indication for valid voting
+* Red LED and buzzer indication for fraud/invalid input
+* Smart idle clock-gating concept
+* Verilog HDL implementation
+* EDA Playground simulation using Icarus Verilog
+
+---
+
+## Problem Statement
+
+Traditional voting interfaces may require physical buttons or switches, which can introduce mechanical wear and physical contact.
+
+This project explores a **touchless digital voting interface** using light-based sensors. In addition to detecting a valid voting input, the system uses two sensors to identify simultaneous activation as an invalid or potentially fraudulent condition.
+
+The design also demonstrates a power-saving concept by reducing clock activity when there is no sensor input.
+
+---
 
 ## Objectives
 
-* Design a touchless voting mechanism using LDR sensors.
-* Use dual-LDR sensing for fraud or invalid-input detection.
-* Implement the voting sequence using a finite state machine.
-* Count valid votes using a digital vote counter.
-* Display the vote count using a seven-segment display.
-* Provide separate valid and fraud alerts.
-* Reduce unnecessary switching activity during system idle periods using clock gating.
+1. Design a touchless voting interface using LDR sensors.
+2. Implement dual-LDR logic for valid-input and fraud detection.
+3. Design an FSM to control the voting sequence.
+4. Count valid votes using a digital counter.
+5. Display the vote count using a 7-segment display.
+6. Provide LED and buzzer alerts for system conditions.
+7. Demonstrate an idle clock-gating concept for power saving.
+8. Verify the complete design using Verilog simulation.
+
+---
 
 ## System Architecture
 
+The overall system follows this flow:
+
 ```text
-             LDR Sensor A
-                  │
-                  ├──────────────┐
-                  │              │
-                  ▼              ▼
-             Input Logic    Fraud Detector
-                  │              │
-                  └──────┬───────┘
-                         │
-                         ▼
-                  Voting FSM
-                         │
-                         ▼
-                   Vote Counter
-                         │
-                         ▼
-                Seven-Segment Display
+        LDR A ─────┐
+                   │
+                   ▼
+             ┌───────────────┐
+        LDR B │ Fraud Detector│
+        ─────►│ & Input Logic │
+             └───────┬───────┘
+                     │
+          ┌──────────┴──────────┐
+          │                     │
+          ▼                     ▼
+   Valid Input             Fraud Detected
+          │                     │
+          ▼                     ▼
+    ┌───────────┐         ┌─────────────┐
+    │ Voting FSM│         │ Alert Logic │
+    └─────┬─────┘         └──────┬──────┘
+          │                      │
+          ▼                      ▼
+   ┌─────────────┐        Red LED + Buzzer
+   │ Vote Counter│
+   └──────┬──────┘
+          │
+          ▼
+   ┌─────────────┐
+   │ 7-Segment   │
+   │   Display   │
+   └─────────────┘
 
-       Valid Vote ──► Alert Controller ──► Green LED
-
-       Fraud/Invalid ─► Alert Controller
-                              │
-                              ├──► Red LED
-                              └──► Buzzer
-
-                    Clock Gating
-                         │
-                         ▼
-                  Idle Power Saving
+       LDR A OR LDR B
+             │
+             ▼
+      Clock Gating Logic
+             │
+             ▼
+         Gated Clock
 ```
 
-## Main Modules
+The detailed architecture is available in:
 
-| Module               | Description                                   |
-| -------------------- | --------------------------------------------- |
-| `top_module.v`       | Integrates all system modules                 |
-| `voting_fsm.v`       | Controls the voting sequence using an FSM     |
-| `vote_counter.v`     | Counts valid votes                            |
-| `fraud_detector.v`   | Detects invalid dual-LDR activation           |
-| `seven_segment.v`    | Drives the seven-segment display              |
-| `alert_controller.v` | Controls valid and fraud indications          |
-| `clock_gating.v`     | Controls clock activity during idle operation |
+`docs/project_architecture.png`
 
-## Input and Output
+---
 
-### Inputs
+## Dual-LDR Fraud Detection
 
-* LDR Sensor A
-* LDR Sensor B
-* System clock
-* Reset
+The two LDR inputs are processed using simple digital logic.
 
-### Outputs
+| LDR A | LDR B | Condition             |
+| ----: | ----: | --------------------- |
+|     0 |     0 | No input              |
+|     0 |     1 | Valid input           |
+|     1 |     0 | Valid input           |
+|     1 |     1 | Fraud / invalid input |
 
-* Seven-segment display
-* Valid vote indication
-* Fraud/invalid indication
-* Buzzer control
+The logic is:
 
-## Voting Concept
+```text
+Valid Input   = LDR A XOR LDR B
 
-The two LDR sensors provide light-based touchless input.
+Fraud Detect  = LDR A AND LDR B
+```
 
-A valid sensor sequence is processed by the voting FSM. When the input satisfies the required voting conditions, the vote counter is incremented.
+Therefore:
 
-If an invalid or fraudulent sensor activation is detected, the vote is not counted and the alert controller activates the fraud indication.
+* XOR identifies when exactly one LDR is active.
+* AND identifies simultaneous activation of both LDRs.
+
+---
+
+## FSM Design
+
+The voting controller is implemented using a **Finite State Machine** with three states:
+
+```text
+        ┌─────────┐
+        │  IDLE   │
+        └────┬────┘
+             │
+       Valid Input
+             │
+             ▼
+        ┌─────────┐
+        │  VOTE   │
+        └────┬────┘
+             │
+             ▼
+           IDLE
+
+
+        ┌─────────┐
+        │  IDLE   │
+        └────┬────┘
+             │
+      Fraud Detected
+             │
+             ▼
+        ┌─────────┐
+        │  FRAUD  │
+        └────┬────┘
+             │
+             ▼
+           IDLE
+```
+
+### FSM States
+
+| State | Function                    |
+| ----- | --------------------------- |
+| IDLE  | Waits for sensor input      |
+| VOTE  | Enables valid vote counting |
+| FRAUD | Generates fraud alert       |
+
+The detailed FSM diagram is available in:
+
+`docs/fsm_design.png`
+
+---
+
+## Output Indications
+
+| Condition             | Green LED | Red LED | Buzzer |
+| --------------------- | --------- | ------- | ------ |
+| No input              | OFF       | OFF     | OFF    |
+| Valid vote            | ON        | OFF     | OFF    |
+| Fraud / invalid input | OFF       | ON      | ON     |
+
+The current vote count is provided to the 7-segment display module.
+
+---
+
+## Smart Idle Power Saver
+
+The project includes a clock-gating concept for reducing unnecessary clock activity.
+
+The system determines whether there is an active sensor input:
+
+```text
+System Active = LDR A OR LDR B
+```
+
+When sensor activity is absent, the gated clock remains inactive.
+
+When an LDR input is detected, the gated clock becomes active.
+
+> Note: The clock-gating module in this project demonstrates the digital-design concept. For production FPGA designs, dedicated clock-management resources or clock-enable techniques are generally preferred over ordinary combinational logic used as a global clock.
+
+---
+
+## Verilog Modules
+
+The project is divided into modular Verilog HDL files.
+
+| Module               | Description                                    |
+| -------------------- | ---------------------------------------------- |
+| `top_module.v`       | Integrates all system modules                  |
+| `voting_fsm.v`       | Controls voting and fraud states               |
+| `vote_counter.v`     | Counts valid votes                             |
+| `fraud_detector.v`   | Detects valid and simultaneous LDR inputs      |
+| `seven_segment.v`    | Converts vote count to 7-segment output        |
+| `alert_controller.v` | Controls LEDs and buzzer                       |
+| `clock_gating.v`     | Implements the smart idle clock-gating concept |
+
+---
+
+## Testbench
+
+The testbench verifies different operating conditions of the voting system.
+
+The following cases are included:
+
+* Reset condition
+* No LDR input
+* Valid LDR A input
+* Valid LDR B input
+* Simultaneous LDR A and LDR B activation
+* Additional valid voting input
+
+Testbench file:
+
+`testbench/voting_system_tb.v`
+
+---
 
 ## Simulation
 
-The design is verified using a Verilog testbench.
+The design was simulated using **EDA Playground** with the **Icarus Verilog** simulator.
 
-The testbench checks:
-
-* System reset
-* Valid voting operation
-* Vote counting
-* Dual-LDR invalid/fraud condition
-* Alert generation
-* Seven-segment output
-* System idle behavior
-
-Simulation results are documented in:
+Simulation screenshots are available in:
 
 ```text
-simulation/simulation_results.md
+simulation/
+├── eda_playground_simulation_1.png
+└── eda_playground_simulation_2.png
 ```
+
+The simulation documentation is available in:
+
+`simulation/simulation_results.md`
+
+---
 
 ## Project Structure
 
@@ -126,54 +277,75 @@ Light-Based-Touchless-Voting-Machine/
 │   └── voting_system_tb.v
 │
 ├── simulation/
-│   └── simulation_results.md
-│
-├── constraints/
-│   └── pin_constraints.xdc
+│   ├── simulation_results.md
+│   ├── eda_playground_simulation_1.png
+│   └── eda_playground_simulation_2.png
 │
 └── docs/
-    ├── block_diagram.png
-    ├── fsm_diagram.png
-    └── circuit_diagram.png
+    ├── project_architecture.png
+    ├── fsm_design.png
+    └── implementation.png
 ```
+
+---
 
 ## Technologies Used
 
 * Verilog HDL
-* FPGA
 * Digital Logic Design
-* Finite State Machine
-* LDR-based sensing
-* Seven-Segment Display
-* Clock Gating
-* Icarus Verilog / EDA Playground
-* Xilinx Vivado
+* Finite State Machines
+* FPGA-oriented Digital Design
+* Icarus Verilog
+* EDA Playground
+* 7-Segment Display Logic
+* LDR-based Digital Input
+
+---
 
 ## Applications
 
-The proposed system can be used as an academic demonstration of:
+The concept can be adapted for:
 
-* Touchless digital input
-* FPGA-based voting logic
-* Sensor-based fraud detection
-* Finite state machine design
-* Digital vote counting
-* Low-power digital design
+* Touchless voting demonstrations
+* Digital logic laboratory projects
+* Educational FPGA demonstrations
+* Contactless user-input systems
+* Secure input-interface prototypes
+
+---
 
 ## Future Scope
 
-The system can be extended by adding:
+Possible future improvements include:
 
-* Multiple candidate selection
-* Secure voter authentication
-* Non-volatile vote storage
-* Advanced anti-tampering mechanisms
-* FPGA board-based hardware implementation
-* Remote monitoring and vote-result logging
+* Multi-candidate voting support
+* Voter authentication
+* RFID or biometric authentication
+* Improved sensor synchronization and debouncing
+* Dedicated FPGA clock-management resources
+* Vote data logging
+* Tamper detection
+* Secure vote storage
+* Hardware implementation on a suitable FPGA development board
+
+---
+
+## Conclusion
+
+The project demonstrates how digital logic, FSMs, sensor-based inputs, fraud detection, vote counting, display control, and power-saving concepts can be integrated into a single touchless voting system.
+
+The design has been modularized using Verilog HDL and verified through simulation.
+
+---
 
 ## Author
 
-Third-Year ENTC Engineering Project
+**Apurva Bagadi**
 
-**Project:** Light-Based Touchless Voting Machine with Dual-LDR Fraud Detection & Smart Idle Power Saver
+3rd Year ENTC Engineering Student
 
+---
+
+## License
+
+This project is intended for **educational and academic purposes**.
